@@ -4,16 +4,11 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, unwrap::UnwrapOptimized, Address, Env,
+    contract, contractimpl, contracttype, symbol_short, token, unwrap::UnwrapOptimized, Address,
+    Env,
 };
 
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    Offer,
-}
-
-// Represents an offer managed by the SingleOffer contract.
+// Represents an offer managed by the Vault contract.
 // If a seller wants to sell 1000 XLM for 100 USDC the `sell_price` would be 1000
 // and `buy_price` would be 100 (or 100 and 10, or any other pair of integers
 // in 10:1 ratio).
@@ -22,6 +17,7 @@ pub enum DataKey {
 pub struct Offer {
     // Owner of this offer. Sells sell_token to get buy_token.
     pub seller: Address,
+    pub treasury: Address,
     pub sell_token: Address,
     pub buy_token: Address,
     // Seller-defined price of the sell token in arbitrary units.
@@ -31,7 +27,7 @@ pub struct Offer {
 }
 
 #[contract]
-pub struct SingleOffer;
+pub struct Vault;
 
 /*
 How this contract should be used:
@@ -45,18 +41,19 @@ How this contract should be used:
 4. Seller may call `withdraw` to claim any remaining `sell_token` balance.
 */
 #[contractimpl]
-impl SingleOffer {
+impl Vault {
     // Creates the offer for seller for the given token pair and initial price.
     // See comment above the `Offer` struct for information on pricing.
     pub fn create(
         e: Env,
         seller: Address,
+        treasury: Address,
         sell_token: Address,
         buy_token: Address,
         sell_price: u32,
         buy_price: u32,
     ) {
-        if e.storage().instance().has(&DataKey::Offer) {
+        if e.storage().instance().has(&symbol_short!("offer")) {
             panic!("offer is already created");
         }
         if buy_price == 0 || sell_price == 0 {
@@ -68,6 +65,7 @@ impl SingleOffer {
             &e,
             &Offer {
                 seller,
+                treasury,
                 sell_token,
                 buy_token,
                 sell_price,
@@ -102,7 +100,6 @@ impl SingleOffer {
         }
 
         let contract = e.current_contract_address();
-
         // Perform the trade in 3 `transfer` steps.
         // Note, that we don't need to verify any balances - the contract would
         // just trap and roll back in case if any of the transfers fails for
@@ -118,7 +115,7 @@ impl SingleOffer {
         // Transfer the `sell_token` from contract to buyer.
         sell_token_client.transfer(&contract, &buyer, &sell_token_amount);
         // Transfer the `buy_token` to the seller immediately.
-        buy_token_client.transfer(&contract, &offer.seller, &buy_token_amount);
+        buy_token_client.transfer(&contract, &offer.treasury, &buy_token_amount);
     }
 
     // Sends amount of token from this contract to the seller.
@@ -173,16 +170,19 @@ impl SingleOffer {
         let contract = e.current_contract_address();
 
         sell_token_client.transfer(&receiver, &offer.seller, &redeem_amount);
-        buy_token_client.transfer_from(&contract, &offer.seller, &receiver, &buy_token_amount);
+        buy_token_client.transfer_from(&contract, &offer.treasury, &receiver, &buy_token_amount);
     }
 }
 
 fn load_offer(e: &Env) -> Offer {
-    e.storage().instance().get(&DataKey::Offer).unwrap()
+    e.storage()
+        .instance()
+        .get(&&symbol_short!("offer"))
+        .unwrap()
 }
 
 fn write_offer(e: &Env, offer: &Offer) {
-    e.storage().instance().set(&DataKey::Offer, offer);
+    e.storage().instance().set(&symbol_short!("offer"), offer);
 }
 
 mod test;

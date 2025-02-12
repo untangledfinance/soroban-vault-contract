@@ -598,13 +598,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 
 [[package]]
-name = "hello-world"
-version = "0.0.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1405,6 +1398,13 @@ name = "unicode-ident"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a210d160f08b701c8721ba1c726c11662f877ea6b7094007e1ca9a1041945034"
+
+[[package]]
+name = "untangled-vault"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+]
 
 [[package]]
 name = "version_check"

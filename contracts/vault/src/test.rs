@@ -1,7 +1,7 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::{token, SingleOfferClient};
+use crate::{token, VaultClient};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
@@ -22,13 +22,21 @@ fn create_token_contract<'a>(
 fn create_single_offer_contract<'a>(
     e: &Env,
     seller: &Address,
+    treasury: &Address,
     sell_token: &Address,
     buy_token: &Address,
     sell_price: u32,
     buy_price: u32,
-) -> SingleOfferClient<'a> {
-    let offer = SingleOfferClient::new(e, &e.register(crate::SingleOffer, ()));
-    offer.create(seller, sell_token, buy_token, &sell_price, &buy_price);
+) -> VaultClient<'a> {
+    let offer = VaultClient::new(e, &e.register(crate::Vault, ()));
+    offer.create(
+        seller,
+        treasury,
+        sell_token,
+        buy_token,
+        &sell_price,
+        &buy_price,
+    );
 
     // Verify that authorization is required for the seller.
     assert_eq!(
@@ -41,6 +49,7 @@ fn create_single_offer_contract<'a>(
                     symbol_short!("create"),
                     (
                         seller,
+                        treasury,
                         sell_token.clone(),
                         buy_token.clone(),
                         sell_price,
@@ -64,6 +73,7 @@ fn test() {
     let token_admin = Address::generate(&e);
     let seller = Address::generate(&e);
     let buyer = Address::generate(&e);
+    let treasury = Address::generate(&e);
 
     let sell_token = create_token_contract(&e, &token_admin);
     let sell_token_client = sell_token.0;
@@ -77,6 +87,7 @@ fn test() {
     let offer = create_single_offer_contract(
         &e,
         &seller,
+        &treasury,
         &sell_token_client.address,
         &buy_token_client.address,
         1,
@@ -119,7 +130,7 @@ fn test() {
     assert_eq!(sell_token_client.balance(&seller), 900);
     assert_eq!(sell_token_client.balance(&buyer), 10);
     assert_eq!(sell_token_client.balance(&offer.address), 90);
-    assert_eq!(buy_token_client.balance(&seller), 20);
+    assert_eq!(buy_token_client.balance(&treasury), 20);
     assert_eq!(buy_token_client.balance(&buyer), 980);
     assert_eq!(buy_token_client.balance(&offer.address), 0);
 
@@ -167,7 +178,7 @@ fn test() {
     assert_eq!(sell_token_client.balance(&seller), 970);
     assert_eq!(sell_token_client.balance(&buyer), 20);
     assert_eq!(sell_token_client.balance(&offer.address), 10);
-    assert_eq!(buy_token_client.balance(&seller), 30);
+    assert_eq!(buy_token_client.balance(&treasury), 30);
     assert_eq!(buy_token_client.balance(&buyer), 970);
     assert_eq!(buy_token_client.balance(&offer.address), 0);
 }
