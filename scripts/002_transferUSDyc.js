@@ -9,7 +9,7 @@ const call = usdycContract.call(
   StellarSdk.nativeToScVal(vault.contractId(StellarSdk.Networks.TESTNET), {
     type: "address",
   }),
-  StellarSdk.xdr.ScVal.scvI128(10000000000) // 1000 USDyc
+  new StellarSdk.ScInt(10000000000).toI128() // 1000 USDyc
 );
 
 invokeContract(distributorKeys, call);

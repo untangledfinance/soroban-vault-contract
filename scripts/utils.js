@@ -4,11 +4,9 @@ const rpc = new StellarSdk.rpc.Server("https://soroban-testnet.stellar.org");
 const horizon = new StellarSdk.Horizon.Server(
   "https://horizon-testnet.stellar.org"
 );
-const dotenv = require("dotenv");
-dotenv.config();
-
-function invokeContract(account, fnCall) {
-  rpc
+require("dotenv").config();
+async function invokeContract(account, fnCall) {
+  return rpc
     .getAccount(account.publicKey())
     .then(async (acc) => {
       let tx = new StellarSdk.TransactionBuilder(acc, {
@@ -23,7 +21,15 @@ function invokeContract(account, fnCall) {
       preparedTx.sign(account);
       return rpc.sendTransaction(preparedTx);
     })
-    .then(console.log)
+    .then(async (pendingTx) => {
+      const res = await rpc.pollTransaction(
+        pendingTx.hash,
+        3,
+        StellarSdk.rpc.BasicSleepStrategy
+      );
+      if (res.returnValue) return StellarSdk.scValToNative(res.returnValue);
+      else return res;
+    })
     .catch(console.error);
 }
 
@@ -72,7 +78,9 @@ function loadFixtures() {
     process.env.DISTRIBUTOR_KEYS
   );
   const aliceKeys = StellarSdk.Keypair.fromSecret(process.env.ALICE_KEYS);
-  const usdyc = new StellarSdk.Asset("testUSDYC", issuerKeys.publicKey());
+  const treasuryKeys = StellarSdk.Keypair.fromSecret(process.env.TREASURY_KEYS);
+
+  const usdyc = new StellarSdk.Asset("testUSDyc", issuerKeys.publicKey());
   const usdc = new StellarSdk.Asset("USDC", issuerKeys.publicKey());
 
   const vault = new StellarSdk.Contract(process.env.VAULT_ADDRESS);
@@ -83,6 +91,7 @@ function loadFixtures() {
     issuerKeys,
     distributorKeys,
     aliceKeys,
+    treasuryKeys,
     usdyc,
     usdc,
     vault,

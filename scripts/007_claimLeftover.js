@@ -5,7 +5,7 @@ const { invokeContract, loadFixtures } = require("./utils");
 const { vault, distributorKeys, usdyc } = loadFixtures();
 
 const call = vault.call(
-  "claim_leftover",
+  "claim",
   StellarSdk.nativeToScVal(usdyc.contractId(StellarSdk.Networks.TESTNET), {
     type: "address",
   }),
