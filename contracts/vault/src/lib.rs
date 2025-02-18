@@ -74,7 +74,7 @@ impl Vault {
         );
     }
 
-    // Trades `buy_token_amount` of buy_token from buyer for `sell_token` amount
+    // Deposit `buy_token_amount` of buy_token from buyer for `sell_token` amount
     // defined by the price.
     // `min_sell_amount` defines a lower bound on the price that the buyer would
     // accept.
@@ -151,6 +151,10 @@ impl Vault {
         load_offer(&e)
     }
 
+    // Redeems the sell_token for buy_token.
+    // Must be authorized by the receiver. The receiver will receive the buy_token
+    // and the seller will receive back the sell_token. The amount of buy_token
+    // will be calculated based on the current price.
     pub fn redeem(e: Env, receiver: Address, redeem_amount: i128, min_buy_token_amount: i128) {
         receiver.require_auth();
         let offer = load_offer(&e);
@@ -168,7 +172,10 @@ impl Vault {
         }
 
         let contract = e.current_contract_address();
-
+        // Perform the trade in 2 `transfer` steps.
+        // Note, that we don't need to verify any balances - the contract would
+        // just trap and roll back in case if any of the transfers fails for
+        // any reason, including insufficient balance.
         sell_token_client.transfer(&receiver, &offer.seller, &redeem_amount);
         buy_token_client.transfer_from(&contract, &offer.treasury, &receiver, &buy_token_amount);
     }

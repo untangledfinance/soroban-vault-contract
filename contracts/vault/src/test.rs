@@ -181,4 +181,15 @@ fn test() {
     assert_eq!(buy_token_client.balance(&treasury), 30);
     assert_eq!(buy_token_client.balance(&buyer), 970);
     assert_eq!(buy_token_client.balance(&offer.address), 0);
+
+    // Withdraw 10 sell_token from offer.
+    buy_token_client.approve(&treasury, &offer.address, &1000_i128, &3110400_u32);
+    offer.redeem(&buyer, &10_i128, &10_i128);
+
+    assert_eq!(sell_token_client.balance(&seller), 980);
+    assert_eq!(sell_token_client.balance(&buyer), 10);
+    assert_eq!(sell_token_client.balance(&offer.address), 10);
+    assert_eq!(buy_token_client.balance(&treasury), 20);
+    assert_eq!(buy_token_client.balance(&buyer), 980);
+    assert_eq!(buy_token_client.balance(&offer.address), 0);
 }
