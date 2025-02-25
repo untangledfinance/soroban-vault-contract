@@ -1,6 +1,3 @@
-//! This contract implements trading of one token pair between one seller and
-//! multiple buyer.
-//! It demonstrates one of the ways of how trading might be implemented.
 #![no_std]
 
 use soroban_sdk::{
@@ -32,17 +29,19 @@ pub struct Vault;
 /*
 How this contract should be used:
 
-1. Call `create` once to create the offer and register its seller.
+1. Call `create` once to create the share sale and register its seller.
 2. Seller may transfer arbitrary amounts of the `sell_token` for sale to the
-   contract address for trading. They may also update the offer price.
-3. Buyers may call `trade` to trade with the offer. The contract will
-   immediately perform the trade and send the respective amounts of `buy_token`
-   and `sell_token` to the seller and buyer respectively.
+   contract address for depositing. They may also update the sale price.
+3. Buyers may call `deposit` to deposit with the vault. The contract will
+   immediately perform the deposit and send the respective amounts of `buy_token`
+   and `sell_token` to the treasury and buyer respectively.
 4. Seller may call `withdraw` to claim any remaining `sell_token` balance.
+5. Buyer may call `redeem` to redeem `sell_token` for `buy_token` at the current
+   price.
 */
 #[contractimpl]
 impl Vault {
-    // Creates the offer for seller for the given token pair and initial price.
+    // Creates the sale for seller for the given token pair and initial price.
     // See comment above the `Offer` struct for information on pricing.
     pub fn create(
         e: Env,
@@ -78,10 +77,10 @@ impl Vault {
     // defined by the price.
     // `min_sell_amount` defines a lower bound on the price that the buyer would
     // accept.
-    // Buyer needs to authorize the `trade` call and internal `transfer` call to
+    // Buyer needs to authorize the `deposit` call and internal `transfer` call to
     // the contract address.
     pub fn deposit(e: Env, buyer: Address, buy_token_amount: i128, min_sell_token_amount: i128) {
-        // Buyer needs to authorize the trade.
+        // Buyer needs to authorize the deposit.
         buyer.require_auth();
 
         // Load the offer and prepare the token clients to do the trade.
@@ -107,14 +106,14 @@ impl Vault {
 
         // Transfer the `buy_token` from buyer to this contract.
         // This `transfer` call should be authorized by buyer.
-        // This could as well be a direct transfer to the seller, but sending to
+        // This could as well be a direct transfer to the treasury, but sending to
         // the contract address allows building more transparent signature
         // payload where the buyer doesn't need to worry about sending token to
         // some 'unknown' third party.
         buy_token_client.transfer(&buyer, &contract, &buy_token_amount);
         // Transfer the `sell_token` from contract to buyer.
         sell_token_client.transfer(&contract, &buyer, &sell_token_amount);
-        // Transfer the `buy_token` to the seller immediately.
+        // Transfer the `buy_token` to the treasury immediately.
         buy_token_client.transfer(&contract, &offer.treasury, &buy_token_amount);
     }
 
