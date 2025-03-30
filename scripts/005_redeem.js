@@ -5,10 +5,9 @@ const { invokeContract, loadFixtures } = require("./utils");
 const { vault, aliceKeys } = loadFixtures(); // Load the fixtures
 
 const call = vault.call(
-  "redeem",
+  "redeem_request",
   StellarSdk.nativeToScVal(aliceKeys.publicKey(), { type: "address" }),
-  new StellarSdk.ScInt(10000000).toI128(), // 1 USDyc
-  new StellarSdk.ScInt(10000000).toI128() // 1 USDC
+  new StellarSdk.ScInt(10000000).toI128() // 1 USDyc
 );
 
 invokeContract(aliceKeys, call); // Invoke the contract

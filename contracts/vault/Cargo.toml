@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { version = "22.0.1" }
+soroban-token-sdk = { version = "22.0.1" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

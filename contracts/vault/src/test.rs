@@ -1,11 +1,11 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::{token, VaultClient};
+use crate::vault::VaultClient;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
-    Address, Env, IntoVal, Symbol,
+    token, Address, Env, IntoVal, Symbol,
 };
 
 fn create_token_contract<'a>(
@@ -19,7 +19,7 @@ fn create_token_contract<'a>(
     )
 }
 
-fn create_single_offer_contract<'a>(
+fn create_vault_contract<'a>(
     e: &Env,
     seller: &Address,
     treasury: &Address,
@@ -28,8 +28,8 @@ fn create_single_offer_contract<'a>(
     sell_price: u32,
     buy_price: u32,
 ) -> VaultClient<'a> {
-    let offer = VaultClient::new(e, &e.register(crate::Vault, ()));
-    offer.create(
+    let vault = VaultClient::new(e, &e.register(crate::vault::Vault, ()));
+    vault.initialize(
         seller,
         treasury,
         sell_token,
@@ -37,16 +37,14 @@ fn create_single_offer_contract<'a>(
         &sell_price,
         &buy_price,
     );
-
-    // Verify that authorization is required for the seller.
     assert_eq!(
         e.auths(),
         std::vec![(
             seller.clone(),
             AuthorizedInvocation {
                 function: AuthorizedFunction::Contract((
-                    offer.address.clone(),
-                    symbol_short!("create"),
+                    vault.address.clone(),
+                    Symbol::new(&e, "initialize"),
                     (
                         seller,
                         treasury,
@@ -62,7 +60,7 @@ fn create_single_offer_contract<'a>(
         )]
     );
 
-    offer
+    vault
 }
 
 #[test]
@@ -72,54 +70,115 @@ fn test() {
 
     let token_admin = Address::generate(&e);
     let seller = Address::generate(&e);
-    let buyer = Address::generate(&e);
     let treasury = Address::generate(&e);
+    let buyer = Address::generate(&e);
 
     let sell_token = create_token_contract(&e, &token_admin);
     let sell_token_client = sell_token.0;
-    let sell_token_admin_client = sell_token.1;
+    let sell_token_admin = sell_token.1;
 
     let buy_token = create_token_contract(&e, &token_admin);
     let buy_token_client = buy_token.0;
-    let buy_token_admin_client = buy_token.1;
+    let buy_token_admin = buy_token.1;
 
-    // The price here is 1 sell_token for 2 buy_token.
-    let offer = create_single_offer_contract(
+    let vault = create_vault_contract(
         &e,
         &seller,
         &treasury,
         &sell_token_client.address,
         &buy_token_client.address,
         1,
-        2,
+        1,
     );
-    // Give some sell_token to seller and buy_token to buyer.
-    sell_token_admin_client.mint(&seller, &1000);
-    buy_token_admin_client.mint(&buyer, &1000);
-    // Deposit 100 sell_token from seller into offer.
-    sell_token_client.transfer(&seller, &offer.address, &100);
 
-    // Try trading 20 buy_token for at least 11 sell_token - that wouldn't
-    // succeed because the offer price would result in 10 sell_token.
-    assert!(offer.try_deposit(&buyer, &20_i128, &11_i128).is_err());
-    // Buyer trades 20 buy_token for 10 sell_token.
-    offer.deposit(&buyer, &20_i128, &10_i128);
-    // Verify that authorization is required for the buyer.
+    let offer = vault.get_offer();
+
+    assert_eq!(offer.buy_price, 1);
+    assert_eq!(offer.sell_price, 1);
+    assert_eq!(offer.buy_token, buy_token_client.address);
+    assert_eq!(offer.sell_token, sell_token_client.address);
+    assert_eq!(offer.seller, seller);
+    assert_eq!(offer.treasury, treasury);
+
+    assert_eq!(vault.get_epoch_id(), 1_u32);
+    assert_eq!(vault.get_total_redeem(), 0_i128);
+
+    sell_token_admin.mint(&seller, &1000);
+    buy_token_admin.mint(&buyer, &1000);
+
+    sell_token_client.transfer(&seller, &vault.address, &100);
+
+    assert!(vault.try_deposit(&buyer, &10_i128, &11_i128).is_err());
+
+    vault.deposit(&buyer, &10_i128, &10_i128);
+
     assert_eq!(
         e.auths(),
         std::vec![(
             buyer.clone(),
             AuthorizedInvocation {
                 function: AuthorizedFunction::Contract((
-                    offer.address.clone(),
+                    vault.address.clone(),
                     symbol_short!("deposit"),
-                    (&buyer, 20_i128, 10_i128).into_val(&e)
+                    (&buyer, 10_i128, 10_i128).into_val(&e)
                 )),
                 sub_invocations: std::vec![AuthorizedInvocation {
                     function: AuthorizedFunction::Contract((
                         buy_token_client.address.clone(),
                         symbol_short!("transfer"),
-                        (buyer.clone(), &offer.address, 20_i128).into_val(&e)
+                        (buyer.clone(), &vault.address, 10_i128).into_val(&e)
+                    )),
+                    sub_invocations: std::vec![]
+                }]
+            },
+        )]
+    );
+
+    assert_eq!(sell_token_client.balance(&seller), 900);
+    assert_eq!(sell_token_client.balance(&buyer), 10);
+    assert_eq!(sell_token_client.balance(&vault.address), 90);
+
+    assert_eq!(buy_token_client.balance(&treasury), 10);
+    assert_eq!(buy_token_client.balance(&buyer), 990);
+    assert_eq!(buy_token_client.balance(&vault.address), 0);
+
+    vault.claim_leftover(&sell_token_client.address, &90);
+
+    assert_eq!(
+        e.auths(),
+        std::vec![(
+            seller.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    vault.address.clone(),
+                    Symbol::new(&e, "claim_leftover"),
+                    (&sell_token_client.address, 90_i128).into_val(&e)
+                )),
+                sub_invocations: std::vec![]
+            }
+        )]
+    );
+
+    assert_eq!(sell_token_client.balance(&seller), 990);
+    assert_eq!(sell_token_client.balance(&vault.address), 0);
+
+    vault.redeem_request(&buyer, &5_i128);
+
+    assert_eq!(
+        e.auths(),
+        std::vec![(
+            buyer.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    vault.address.clone(),
+                    Symbol::new(&e, "redeem_request"),
+                    (buyer.clone(), 5_i128).into_val(&e)
+                )),
+                sub_invocations: std::vec![AuthorizedInvocation {
+                    function: AuthorizedFunction::Contract((
+                        sell_token_client.address.clone(),
+                        Symbol::new(&e, "transfer"),
+                        (buyer.clone(), &vault.address, 5_i128).into_val(&e)
                     )),
                     sub_invocations: std::vec![]
                 }]
@@ -127,69 +186,105 @@ fn test() {
         )]
     );
 
-    assert_eq!(sell_token_client.balance(&seller), 900);
-    assert_eq!(sell_token_client.balance(&buyer), 10);
-    assert_eq!(sell_token_client.balance(&offer.address), 90);
-    assert_eq!(buy_token_client.balance(&treasury), 20);
-    assert_eq!(buy_token_client.balance(&buyer), 980);
-    assert_eq!(buy_token_client.balance(&offer.address), 0);
+    assert_eq!(sell_token_client.balance(&buyer), 5);
+    assert_eq!(sell_token_client.balance(&vault.address), 5);
+    assert_eq!(vault.get_total_redeem(), 5);
 
-    // Withdraw 70 sell_token from offer.
-    offer.claim(&sell_token_client.address, &70);
-    // Verify that the seller has to authorize this.
+    let redeem_request = vault.get_request(&buyer);
+    assert_eq!(redeem_request.shares_amount, 5);
+    assert_eq!(redeem_request.epoch_id, 1);
+
+    vault.setle_epoch();
     assert_eq!(
         e.auths(),
         std::vec![(
-            seller.clone(),
+            treasury.clone(),
             AuthorizedInvocation {
                 function: AuthorizedFunction::Contract((
-                    offer.address.clone(),
-                    symbol_short!("claim"),
-                    (sell_token_client.address.clone(), 70_i128).into_val(&e)
+                    vault.address.clone(),
+                    Symbol::new(&e, "setle_epoch"),
+                    ().into_val(&e)
+                )),
+                sub_invocations: std::vec![AuthorizedInvocation {
+                    function: AuthorizedFunction::Contract((
+                        buy_token_client.address.clone(),
+                        Symbol::new(&e, "transfer"),
+                        (treasury.clone(), &vault.address, 5_i128).into_val(&e)
+                    )),
+                    sub_invocations: std::vec![]
+                }]
+            }
+        )]
+    );
+
+    assert_eq!(vault.get_epoch_id(), 2);
+    assert_eq!(vault.get_total_redeem(), 0);
+    assert_eq!(vault.get_redeem_rate(&1), 1);
+    assert_eq!(sell_token_client.balance(&seller), 995);
+
+    vault.claim_request(&buyer);
+    assert_eq!(
+        e.auths(),
+        std::vec![(
+            buyer.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    vault.address.clone(),
+                    Symbol::new(&e, "claim_request"),
+                    (buyer.clone(),).into_val(&e)
+                )),
+                sub_invocations: std::vec![]
+            }
+        )]
+    );
+    assert_eq!(buy_token_client.balance(&buyer), 995);
+    assert_eq!(buy_token_client.balance(&vault.address), 0);
+    assert_eq!(vault.get_request(&buyer).shares_amount, 0);
+
+    vault.redeem_request(&buyer, &5_i128);
+    assert_eq!(
+        e.auths(),
+        std::vec![(
+            buyer.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    vault.address.clone(),
+                    Symbol::new(&e, "redeem_request"),
+                    (buyer.clone(), 5_i128).into_val(&e)
+                )),
+                sub_invocations: std::vec![AuthorizedInvocation {
+                    function: AuthorizedFunction::Contract((
+                        sell_token_client.address.clone(),
+                        Symbol::new(&e, "transfer"),
+                        (buyer.clone(), &vault.address, 5_i128).into_val(&e)
+                    )),
+                    sub_invocations: std::vec![]
+                }]
+            }
+        )]
+    );
+
+    assert_eq!(sell_token_client.balance(&buyer), 0);
+    assert_eq!(sell_token_client.balance(&vault.address), 5);
+    assert_eq!(vault.get_total_redeem(), 5);
+
+    vault.cancel_request(&buyer);
+    assert_eq!(
+        e.auths(),
+        std::vec![(
+            buyer.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    vault.address.clone(),
+                    Symbol::new(&e, "cancel_request"),
+                    (buyer.clone(),).into_val(&e)
                 )),
                 sub_invocations: std::vec![]
             }
         )]
     );
 
-    assert_eq!(sell_token_client.balance(&seller), 970);
-    assert_eq!(sell_token_client.balance(&offer.address), 20);
-
-    // The price here is 1 sell_token = 1 buy_token.
-    offer.updt_price(&1, &1);
-    // Verify that the seller has to authorize this.
-    assert_eq!(
-        e.auths(),
-        std::vec![(
-            seller.clone(),
-            AuthorizedInvocation {
-                function: AuthorizedFunction::Contract((
-                    offer.address.clone(),
-                    Symbol::new(&e, "updt_price"),
-                    (1_u32, 1_u32).into_val(&e)
-                )),
-                sub_invocations: std::vec![]
-            }
-        )]
-    );
-
-    // Buyer trades 10 buy_token for 10 sell_token.
-    offer.deposit(&buyer, &10_i128, &9_i128);
-    assert_eq!(sell_token_client.balance(&seller), 970);
-    assert_eq!(sell_token_client.balance(&buyer), 20);
-    assert_eq!(sell_token_client.balance(&offer.address), 10);
-    assert_eq!(buy_token_client.balance(&treasury), 30);
-    assert_eq!(buy_token_client.balance(&buyer), 970);
-    assert_eq!(buy_token_client.balance(&offer.address), 0);
-
-    // Withdraw 10 sell_token from offer.
-    buy_token_client.approve(&treasury, &offer.address, &1000_i128, &3110400_u32);
-    offer.redeem(&buyer, &10_i128, &10_i128);
-
-    assert_eq!(sell_token_client.balance(&seller), 980);
-    assert_eq!(sell_token_client.balance(&buyer), 10);
-    assert_eq!(sell_token_client.balance(&offer.address), 10);
-    assert_eq!(buy_token_client.balance(&treasury), 20);
-    assert_eq!(buy_token_client.balance(&buyer), 980);
-    assert_eq!(buy_token_client.balance(&offer.address), 0);
+    assert_eq!(sell_token_client.balance(&buyer), 5);
+    assert_eq!(sell_token_client.balance(&vault.address), 0);
+    assert_eq!(vault.get_total_redeem(), 0);
 }
