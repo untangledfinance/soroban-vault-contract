@@ -49,8 +49,7 @@ The Vault contract provides the following key functionalities:
 - `treasury: Address` - The address where funds will be sent.
 - `sell_token: Address` - The token being offered for sale.
 - `buy_token: Address` - The token to be received in exchange.
-- `sell_price: u32` - The price of one unit of `sell_token` in terms of `buy_token`.
-- `buy_price: u32` - The price of one unit of `buy_token` in terms of `sell_token`.
+- `initial_price: u32` - The price of one unit of `sell_token` in terms of `buy_token`, with 6 decimals precision.
 
 **Restrictions:**
 
@@ -58,62 +57,81 @@ The Vault contract provides the following key functionalities:
 - Prices cannot be zero.
 - The seller must authorize the initialization.
 
+**Event Emitted:**
+
+- **`vault_initialized`**
+  - Parameters: `(seller, treasury, sell_token, buy_token, initial_price)`
+
 ---
 
 ### 2. `deposit`
 
-**Purpose:** Deposit the `buy_token` and receive the corresponding `sell_token`.
+**Purpose:** Deposit the `buy_token` and receive the `sell_token`.
 
 **Parameters:**
 
 - `e: Env` - The contract environment.
-- `buyer: Address` - The address of the buyer.
+- `buyer: Address` - The address of the buyer depositing tokens.
 - `buy_token_amount: i128` - The amount of `buy_token` to deposit.
-- `min_sell_token_amount: i128` - The minimum amount of `sell_token` expected in return.
+- `min_sell_token_amount: i128` - The minimum amount of `sell_token` the buyer expects to receive.
 
 **Restrictions:**
 
 - The buyer must authorize the deposit.
-- The calculated `sell_token` amount must meet or exceed `min_sell_token_amount`.
+- The calculated `sell_token` amount must meet the minimum specified.
+
+**Event Emitted:**
+
+- **`vault_deposit`**
+  - Parameters: `(buyer, treasury, buy_token_amount, sell_token_amount)`
 
 ---
 
 ### 3. `claim_leftover`
 
-**Purpose:** Allow the seller to claim leftover tokens from the vault.
+**Purpose:** Claim leftover tokens remaining in the vault.
 
 **Parameters:**
 
 - `e: Env` - The contract environment.
-- `token: Address` - The token to be claimed.
+- `token: Address` - The token to claim.
 - `amount: i128` - The amount of tokens to claim.
 
 **Restrictions:**
 
-- Only the seller can claim leftover tokens.
+- Only the seller can claim leftovers.
+
+**Event Emitted:**
+
+- **`vault_claim_leftover`**
+  - Parameters: `(seller, token, amount)`
 
 ---
 
 ### 4. `updt_price`
 
-**Purpose:** Update the price of the offer.
+**Purpose:** Update the price of the `sell_token`.
 
 **Parameters:**
 
 - `e: Env` - The contract environment.
-- `sell_price: u32` - The new selling price.
-- `buy_price: u32` - The new buying price.
+- `new_price: u32` - The new price of the `sell_token` in terms of `buy_token`.
 
 **Restrictions:**
 
-- Prices cannot be zero.
-- Only the seller can update the price.
+- The seller must authorize the price update.
+- The new price cannot be zero.
+
+**Event Emitted:**
+
+- **`vault_update_price`**
+  - Parameters: `(seller, new_price)`
 
 ---
 
 ### 5. `redeem_request`
 
-**Purpose:** Submit a request to redeem shares.
+**Purpose:** Submit a redemption request to redeem shares.
 
 **Parameters:**
 
@@ -124,7 +142,12 @@ The Vault contract provides the following key functionalities:
 **Restrictions:**
 
 - The sender must authorize the request.
-- If a previous request exists for an earlier epoch, it must be claimed first.
+- The shares will be transferred to the vault.
+
+**Event Emitted:**
+
+- **`vault_redeem_request`**
+  - Parameters: `(sender, amount, new_redeem_amount, total_redeem_amount)`
 
 ---
 
@@ -142,6 +165,11 @@ The Vault contract provides the following key functionalities:
 - The sender must authorize the cancellation.
 - The request must exist and have a positive share amount.
 
+**Event Emitted:**
+
+- **`vault_cancel_request`**
+  - Parameters: `(sender, shares_amount, new_total_redeem)`
+
 ---
 
 ### 7. `claim_request`
@@ -158,6 +186,11 @@ The Vault contract provides the following key functionalities:
 - The sender must authorize the claim.
 - The epoch must be settled before the claim can be processed.
 
+**Event Emitted:**
+
+- **`vault_claim_request`**
+  - Parameters: `(sender, shares_amount, buy_token_amount)`
+
 ---
 
 ### 8. `setle_epoch`
@@ -172,6 +205,11 @@ The Vault contract provides the following key functionalities:
 
 - Only the treasury can authorize the settlement.
 
+**Event Emitted:**
+
+- **`vault_setle_epoch`**
+  - Parameters: `(treasury, epoch_id, total_redeem, total_asset, price)`
+
 ---
 
 ### 9. `get_offer`
@@ -183,6 +221,9 @@ The Vault contract provides the following key functionalities:
 - `e: Env` - The contract environment.
 
 **Returns:** The `Offer` structure containing all relevant details.
+
+**Event Emitted:**  
+No events emitted.
 
 ---
 
@@ -197,6 +238,9 @@ The Vault contract provides the following key functionalities:
 
 **Returns:** The `RedeemRequest` structure for the user.
 
+**Event Emitted:**  
+No events emitted.
+
 ---
 
 ### 11. `get_epoch_id`
@@ -208,6 +252,9 @@ The Vault contract provides the following key functionalities:
 - `e: Env` - The contract environment.
 
 **Returns:** The current epoch ID as a `u32`.
+
+**Event Emitted:**  
+No events emitted.
 
 ---
 
@@ -221,6 +268,9 @@ The Vault contract provides the following key functionalities:
 
 **Returns:** The total redeem amount as an `i128`.
 
+**Event Emitted:**  
+No events emitted.
+
 ---
 
 ### 13. `get_redeem_rate`
@@ -233,6 +283,9 @@ The Vault contract provides the following key functionalities:
 - `epoch_id: u32` - The ID of the epoch.
 
 **Returns:** The redeem rate as a `u32`.
+
+**Event Emitted:**  
+No events emitted.
 
 ---
 

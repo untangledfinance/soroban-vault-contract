@@ -25,18 +25,10 @@ fn create_vault_contract<'a>(
     treasury: &Address,
     sell_token: &Address,
     buy_token: &Address,
-    sell_price: u32,
-    buy_price: u32,
+    initial_price: &u32,
 ) -> VaultClient<'a> {
     let vault = VaultClient::new(e, &e.register(crate::vault::Vault, ()));
-    vault.initialize(
-        seller,
-        treasury,
-        sell_token,
-        buy_token,
-        &sell_price,
-        &buy_price,
-    );
+    vault.initialize(seller, treasury, sell_token, buy_token, initial_price);
     assert_eq!(
         e.auths(),
         std::vec![(
@@ -50,8 +42,7 @@ fn create_vault_contract<'a>(
                         treasury,
                         sell_token.clone(),
                         buy_token.clone(),
-                        sell_price,
-                        buy_price
+                        initial_price.clone()
                     )
                         .into_val(e)
                 )),
@@ -87,14 +78,12 @@ fn test() {
         &treasury,
         &sell_token_client.address,
         &buy_token_client.address,
-        1,
-        1,
+        &1000000,
     );
 
     let offer = vault.get_offer();
 
-    assert_eq!(offer.buy_price, 1);
-    assert_eq!(offer.sell_price, 1);
+    assert_eq!(offer.price, 1000000);
     assert_eq!(offer.buy_token, buy_token_client.address);
     assert_eq!(offer.sell_token, sell_token_client.address);
     assert_eq!(offer.seller, seller);
@@ -219,7 +208,7 @@ fn test() {
 
     assert_eq!(vault.get_epoch_id(), 2);
     assert_eq!(vault.get_total_redeem(), 0);
-    assert_eq!(vault.get_redeem_rate(&1), 1);
+    assert_eq!(vault.get_redeem_rate(&1), 1000000);
     assert_eq!(sell_token_client.balance(&seller), 995);
 
     vault.claim_request(&buyer);

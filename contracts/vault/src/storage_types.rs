@@ -13,10 +13,7 @@ pub struct Offer {
     pub treasury: Address,   // treasury address
     pub sell_token: Address, // token to be sold
     pub buy_token: Address,  // token to be bought
-    // Seller-defined price of the sell token in arbitrary units.
-    pub sell_price: u32,
-    // Seller-defined price of the buy token in arbitrary units.
-    pub buy_price: u32,
+    pub price: u32,          // price of the sell token in buy token
 }
 
 #[derive(Clone)]
